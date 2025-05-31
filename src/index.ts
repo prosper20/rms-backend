@@ -12,6 +12,7 @@ const allowedOrigins = [
       "https://rms-drab.vercel.app",
       "https://report.aatcabuja.com.ng",
       "https://www.report.aatcabuja.com.ng",
+      "https://rms-production-43b9.up.railway.app/login",
       "http://localhost:3000",
     ]
 
