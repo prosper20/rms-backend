@@ -1,11 +1,13 @@
 import { Router } from "express";
-import { editUser, getAllUsers } from "../controllers/usersController";
+import { editUser, getAllUsers, disableUser } from "../controllers/usersController";
 import { verifyJWT } from "../middleware/verifyJWT";
 
 const usersRouter: Router = Router();
 
-usersRouter.get("/users", getAllUsers);
+usersRouter.get("/users", verifyJWT, getAllUsers);
 
-usersRouter.put("/users/:userId", verifyJWT, editUser)
+usersRouter.put("/users/:userId", verifyJWT, editUser);
+
+usersRouter.patch("/users/:userId/disable", verifyJWT, disableUser);
 
 export default usersRouter;

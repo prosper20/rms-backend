@@ -23,8 +23,10 @@ model User {
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt()
 
-  vendor          Vendor   @relation(fields: [vendorId], references: [id])
-  vendorId        String
+  isActive        Boolean  @default(true)
+
+  vendor          Vendor?   @relation(fields: [vendorId], references: [id])
+  vendorId        String?
 
   files           File[]
 
@@ -36,6 +38,8 @@ model Vendor {
   name        String   @unique
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt()
+
+  isActive   Boolean  @default(true)
 
   users       User[]
   files       File[]

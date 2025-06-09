@@ -11,14 +11,20 @@ type User = Prisma.UserGetPayload<{}>
 export type Role =  "ADMIN" | "VENDOR" | "SUPER_USER";
 
 export const addUser = async (req: Request, res: Response) => {
-  const { fullName, email, password, vendorId } = req.body;
+  const { fullName, email, password, vendorId, role } = req.body;
 
   if (!fullName) return res.status(400).json({ message: "Full name is required" });
   if (!email) return res.status(400).json({ message: "Email is required" });
   if (!password) return res.status(400).json({ message: "Password is required" });
-  if (!vendorId) return res.status(400).json({ message: "VendorId is required" });
-  const role: Role = req.body.role || 'VENDOR'
+  // if (!vendorId) return res.status(400).json({ message: "VendorId is required" });
+  //const role: Role = req.body.role
   if (!role) return res.status(400).json({ message: "Role is required" });
+
+  if (role === "VENDOR" && !vendorId) {
+    return res.status(400).json({
+      message: "VENDOR role must be associated with a vendor. Please provide vendorId",
+    });
+  }
 
   try {
     const existingUser = await db.user.findFirst({ where: { email } });
@@ -123,8 +129,8 @@ export const loginUser = async (req: Request, res: Response) => {
       email: user.email,
       role: user.role,
       isProfileComplete: user.profile_complete,
-      vendor: user.vendor.name,
-      vendorId: user.vendor.id,
+      vendor: user.vendor?.name ?? null,
+      vendorId: user.vendor?.id ?? null,
       accessToken,
     });
   } catch (err) {
@@ -248,5 +254,39 @@ export const resetPassword = async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Password reset failed" });
+  }
+};
+
+export const adminResetPassword = async (req: Request, res: Response) => {
+  const { userId, newPassword, confirmPassword } = req.body;
+
+  if (!userId || !newPassword || !confirmPassword) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ message: "Passwords do not match" });
+  }
+
+  try {
+    const user = await db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await db.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        profile_complete: false,
+      },
+    });
+
+    res.status(200).json({ message: "Password reset successfully by admin" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Admin password reset failed" });
   }
 };

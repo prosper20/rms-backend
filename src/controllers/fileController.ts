@@ -40,24 +40,11 @@ export const uploadFile = async (req: Request, res: Response) => {
 
 // Get all files (optional filters: vendorId, userId)
 export const getFiles = async (req: Request, res: Response) => {
-  const userId = req.userId;
   const vendorSlug = req.query.vendor as string | undefined;
-
-  // let user: User;
-  //   try {
-  //     user = await db.user.findFirst({ 
-  //       where: { id: userId }
-  //   })
-  //   } catch (error) {
-  //     return res.status(401).json({ message: "Could not Retrive Vendor" });
-  //   }
 
   const vendor = await db.vendor.findUnique({
     where: { name: vendorSlug },
   });
-
-
-
 
   try {
     const files = await db.file.findMany({
@@ -117,25 +104,14 @@ export const deleteFile = async (req: Request, res: Response) => {
 };
 
 export const getWeeklyReports = async (req: Request, res: Response) => {
-  const userId = req.userId;
 
   try {
-    // Get the user to find the vendorId
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vendorId: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
 
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     const files = await db.file.findMany({
       where: {
-        vendorId: user.vendorId,
         sharedAt: {
           gte: oneWeekAgo,
         },
@@ -168,24 +144,10 @@ export const getWeeklyReports = async (req: Request, res: Response) => {
 };
 
 export const getReportFileTypeGraphData = async (req: Request, res: Response) => {
-  const userId = req.userId;
 
   try {
-    // Get the user to find vendorId
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vendorId: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
     // Fetch all files for the vendor
     const files = await db.file.findMany({
-      where: {
-        vendorId: user.vendorId,
-      },
       select: {
         name: true,
       },
@@ -238,18 +200,9 @@ export const getReportFileTypeGraphData = async (req: Request, res: Response) =>
 
 
 export const getDailyReports = async (req: Request, res: Response) => {
-  const userId = req.userId;
+
 
   try {
-    // Get the user to find their vendor ID
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vendorId: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
 
     // Get today's date at midnight
     const todayStart = new Date();
@@ -258,7 +211,6 @@ export const getDailyReports = async (req: Request, res: Response) => {
     // Fetch today's shared files
     const files = await db.file.findMany({
       where: {
-        vendorId: user.vendorId,
         sharedAt: {
           gte: todayStart,
         },
