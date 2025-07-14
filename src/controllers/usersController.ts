@@ -2,6 +2,22 @@ import { Request, Response } from "express";
 import { Role } from "@prisma/client";
 import { db } from "../db";
 
+const updateUser = async (
+  userId: string,
+  data: Partial<{
+    fullName: string;
+    email: string;
+    isActive: boolean;
+    role: Role;
+  }>
+) => {
+  return await db.user.update({
+    where: { id: userId },
+    data,
+  });
+};
+
+
 export const getAllUsers = async (req: Request, res: Response) => {
   const search = (req.query.search as string) || "";
   let roleParam = (req.query.role as string) || "";
@@ -20,6 +36,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
         role: true,
       },
       where: {
+        isActive: true,
         AND: [
           {
             OR: [
@@ -45,31 +62,58 @@ export const getAllUsers = async (req: Request, res: Response) => {
 
 // Update a user's profile
 export const editUser = async (req: Request, res: Response) => {
-  const { fullName, email, profile_picture } = req.body;
-  const userId = req.userId; // assuming `userId` is populated by middleware
-
+  const { fullName, email, role } = req.body;
+  const { userId } = req.params;
+  
   try {
-    const user = await db.user.update({
-      where: { id: userId },
-      data: {
-        fullName: fullName?.trim() || undefined,
-        email: email?.trim() || undefined,
-      },
+    const user = await updateUser(userId, {
+      fullName: fullName?.trim(),
+      email: email?.trim(),
+      role: role as Role,
     });
 
-    const response = {
+    res.json({
       id: user.id,
       fullName: user.fullName,
       email: user.email,
       role: user.role,
-    };
-
-    res.json(response);
+    });
   } catch (err: any) {
     console.error(err);
     if (err.code === "P2002") {
       return res.status(403).json({ message: "Email already in use" });
     }
     res.status(500).json({ message: "Failed to update user", error: err });
+  }
+};
+
+
+export const disableUser = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  try {
+    const user = await db.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const disabledEmail = `disabled-${timestamp}-${user.email}`;
+
+    await updateUser(userId, {
+      email: disabledEmail,
+      isActive: false,
+    });
+
+    res.status(200).json({
+      message: "User disabled (soft-deleted) and email updated successfully",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Failed to disable user",
+      error: err,
+    });
   }
 };

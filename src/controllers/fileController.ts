@@ -38,45 +38,101 @@ export const uploadFile = async (req: Request, res: Response) => {
   }
 };
 
-// Get all files (optional filters: vendorId, userId)
+
 export const getFiles = async (req: Request, res: Response) => {
-  const userId = req.userId;
-  const vendorSlug = req.query.vendor as string | undefined;
+  const vendorSlug = req.query.vendor as string;
+  const search = (req.query.search as string) || "";
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
 
-  // let user: User;
-  //   try {
-  //     user = await db.user.findFirst({ 
-  //       where: { id: userId }
-  //   })
-  //   } catch (error) {
-  //     return res.status(401).json({ message: "Could not Retrive Vendor" });
-  //   }
-
-  const vendor = await db.vendor.findUnique({
-    where: { name: vendorSlug },
-  });
-
-
-
+  if (!vendorSlug) {
+    return res.status(400).json({ message: "Missing vendor parameter." });
+  }
 
   try {
+    const vendor = await db.vendor.findUnique({
+      where: { name: vendorSlug },
+    });
+
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found." });
+    }
+
+    const whereClause = {
+      vendorId: vendor.id,
+      ...(search && {
+        name: {
+          contains: search,
+          mode: Prisma.QueryMode.insensitive,
+        },
+      }),
+    };
+
+    // Get total count of files matching the criteria
+    const totalFiles = await db.file.count({
+      where: whereClause,
+    });
+
+    // Get the files for current page
     const files = await db.file.findMany({
-      where: {
-       vendorId: vendor.id 
-      },
+      where: whereClause,
       orderBy: { sharedAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
       include: {
         sharedBy: { select: { id: true, fullName: true } },
         vendor: { select: { id: true, name: true } },
       },
     });
 
-    res.status(200).json(files);
+    // Calculate pagination values
+    const totalPages = Math.ceil(totalFiles / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+    const nextPage = hasNextPage ? page + 1 : null;
+    const prevPage = hasPrevPage ? page - 1 : null;
+
+    return res.status(200).json({
+      files,
+      currentPage: page,
+      totalFiles,
+      totalPages,
+      hasNextPage,
+      hasPrevPage,
+      nextPage,
+      prevPage,
+    });
   } catch (error) {
     console.error("Get Files Error:", error);
-    res.status(500).json({ message: "Failed to fetch files", error });
+    return res.status(500).json({ message: "Failed to fetch files", error });
   }
 };
+
+// export const getFiles = async (req: Request, res: Response) => {
+//   const vendorSlug = req.query.vendor as string | undefined;
+
+//   const vendor = await db.vendor.findUnique({
+//     where: { name: vendorSlug },
+//   });
+
+//   try {
+//     const files = await db.file.findMany({
+//       where: {
+//        vendorId: vendor.id 
+//       },
+//       orderBy: { sharedAt: "desc" },
+//       include: {
+//         sharedBy: { select: { id: true, fullName: true } },
+//         vendor: { select: { id: true, name: true } },
+//       },
+//     });
+
+//     res.status(200).json(files);
+//   } catch (error) {
+//     console.error("Get Files Error:", error);
+//     res.status(500).json({ message: "Failed to fetch files", error });
+//   }
+// };
 
 // Get a specific file by ID
 export const getFileById = async (req: Request, res: Response) => {
@@ -117,25 +173,14 @@ export const deleteFile = async (req: Request, res: Response) => {
 };
 
 export const getWeeklyReports = async (req: Request, res: Response) => {
-  const userId = req.userId;
 
   try {
-    // Get the user to find the vendorId
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vendorId: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
 
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     const files = await db.file.findMany({
       where: {
-        vendorId: user.vendorId,
         sharedAt: {
           gte: oneWeekAgo,
         },
@@ -168,24 +213,10 @@ export const getWeeklyReports = async (req: Request, res: Response) => {
 };
 
 export const getReportFileTypeGraphData = async (req: Request, res: Response) => {
-  const userId = req.userId;
 
   try {
-    // Get the user to find vendorId
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vendorId: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
     // Fetch all files for the vendor
     const files = await db.file.findMany({
-      where: {
-        vendorId: user.vendorId,
-      },
       select: {
         name: true,
       },
@@ -235,30 +266,24 @@ export const getReportFileTypeGraphData = async (req: Request, res: Response) =>
   }
 };
 
-
-
 export const getDailyReports = async (req: Request, res: Response) => {
-  const userId = req.userId;
-
   try {
-    // Get the user to find their vendor ID
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vendorId: true },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
     // Get today's date at midnight
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    // Fetch today's shared files
-    const files = await db.file.findMany({
+    // Fetch total count of today's reports
+    const totalCount = await db.file.count({
       where: {
-        vendorId: user.vendorId,
+        sharedAt: {
+          gte: todayStart,
+        },
+      },
+    });
+
+    // Fetch the latest 4 reports shared today
+    const latestReports = await db.file.findMany({
+      where: {
         sharedAt: {
           gte: todayStart,
         },
@@ -266,6 +291,7 @@ export const getDailyReports = async (req: Request, res: Response) => {
       orderBy: {
         sharedAt: "desc",
       },
+      take: 4,
       include: {
         sharedBy: {
           select: {
@@ -283,7 +309,10 @@ export const getDailyReports = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(200).json(files);
+    res.status(200).json({
+      totalCount,
+      latestReportsToday: latestReports,
+    });
   } catch (err) {
     console.error("Get Daily Reports Error:", err);
     res.status(500).json({
@@ -292,5 +321,4 @@ export const getDailyReports = async (req: Request, res: Response) => {
     });
   }
 };
-
 
